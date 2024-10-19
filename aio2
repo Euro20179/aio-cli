@@ -81,6 +81,15 @@ class Items:
     user: list[User] = dataclasses.field(default_factory=list)
     meta: list[Meta] = dataclasses.field(default_factory=list)
 
+    def orderizeLists(self):
+        """
+        Ensures all lists are in the same order
+        """
+        self.entries = sorted(self.entries, key=lambda item: item.ItemId)
+        self.meta = sorted(self.meta, key=lambda item: item.ItemId)
+        self.user = sorted(self.user, key=lambda item: item.ItemId)
+        return self
+
 items = Items()
 
 def setArgc(count: int=1):
@@ -106,10 +115,10 @@ def action_all(items: Items):
     Loads all entries
     """
     res = requests.get(f"{apiPath}/list-entries")
-    items.entries = sorted(parseJsonL(res.text, Entry), key=lambda item: item.ItemId)
-    items.user = sorted(fetchUserData(), key=lambda item: item.ItemId)
-    items.meta = sorted(fetchMetaData(), key=lambda item: item.ItemId)
-    return items
+    items.entries = parseJsonL(res.text, Entry)
+    items.user = fetchUserData()
+    items.meta = fetchMetaData()
+    return items.orderizeLists()
 
 action_a = action_all
 
@@ -183,7 +192,7 @@ def action_search(oldItems: Items, search: str):
     validItemIds = {x.ItemId for x in items}
     user = filter(lambda x: x.ItemId in validItemIds, oldItems.user)
     meta = filter(lambda x: x.ItemId in validItemIds, oldItems.meta)
-    return Items(entries=items, user=list(user), meta=list(meta))
+    return Items(entries=items, user=list(user), meta=list(meta)).orderizeLists()
 
 action_s = action_search
 
