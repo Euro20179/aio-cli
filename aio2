@@ -106,9 +106,9 @@ def action_all(items: Items):
     Loads all entries
     """
     res = requests.get(f"{apiPath}/list-entries")
-    items.entries = parseJsonL(res.text, Entry)
-    items.user = fetchUserData()
-    items.meta = fetchMetaData()
+    items.entries = sorted(parseJsonL(res.text, Entry), key=lambda item: item.ItemId)
+    items.user = sorted(fetchUserData(), key=lambda item: item.ItemId)
+    items.meta = sorted(fetchMetaData(), key=lambda item: item.ItemId)
     return items
 
 action_a = action_all
