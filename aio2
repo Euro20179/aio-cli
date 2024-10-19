@@ -1,0 +1,315 @@
+#!/bin/python
+import sys
+import requests
+import os
+import json
+import dataclasses
+import subprocess
+import inspect
+
+from urllib.parse import quote_plus
+from typing import Any, Callable, override
+
+args = sys.argv
+
+server = os.environ.get("AIO_SERVER", "http://localhost:8080")
+apiPath = server + os.environ.get("API_PATH", "/api/v1")
+
+def buildTable(items: dict[Any, Any], kvsep: str = " : "):
+    lines: list[tuple[str, str]] = [(k, v) for k, v in items.items()]
+
+    longestKey = max(*lines, key=lambda x: len(x[0]))
+    lkLen = len(longestKey[0])
+
+    text = "\n".join(f"{k: <{lkLen}}{kvsep}{v}" for k, v in lines)
+    return text
+
+@dataclasses.dataclass
+class User:
+    ItemId: int
+    Status: str
+    ViewCount: int
+    UserRating: float
+    Notes: str
+    CurrentPosition: str
+
+    @override
+    def __repr__(self) -> str:
+        return str(buildTable(self.__dict__))
+
+@dataclasses.dataclass
+class Meta:
+    ItemId: int
+    Rating: float
+    RatingMax: float
+    Description: str
+    ReleaseYear: int
+    Thumbnail: str
+    MediaDependant: str
+    Datapoints: str
+    Title: str
+    Native_Title: str
+    Provider: str
+    ProviderID: str
+
+    @override
+    def __repr__(self) -> str:
+        return str(buildTable(self.__dict__))
+
+
+@dataclasses.dataclass
+class Entry:
+    ItemId: int
+    Collection: str
+    En_Title: str
+    Native_Title: str
+    Format: int
+    Location: str
+    PurchasePrice: float
+    ParentId: int
+    Type: str
+    ArtStyle: int
+    CopyOf: int
+
+    @override
+    def __repr__(self) -> str:
+        return str(buildTable(self.__dict__))
+
+@dataclasses.dataclass
+class Items:
+    entries: list[Entry] = dataclasses.field(default_factory=list)
+    user: list[User] = dataclasses.field(default_factory=list)
+    meta: list[Meta] = dataclasses.field(default_factory=list)
+
+items = Items()
+
+def setArgc(count: int=1):
+    def accept_fn(fn: Callable[..., Any]):
+        fn._aio_argc = count
+        return fn
+    return accept_fn
+
+def parseJsonL(jsonl: str, constructor: object):
+    if not callable(constructor):
+        return []
+    return [constructor(**json.loads(jsonLine)) for jsonLine in jsonl.split("\n") if jsonLine]
+
+def fetchDataList(endpoint: str, constructor: object):
+    res = requests.get(endpoint)
+    return parseJsonL(res.text, constructor)
+
+def fetchUserData(): return fetchDataList(f"{apiPath}/engagement/list-entries", User)
+def fetchMetaData(): return fetchDataList(f"{apiPath}/metadata/list-entries", Meta)
+
+def action_all(items: Items):
+    """
+    Loads all entries
+    """
+    res = requests.get(f"{apiPath}/list-entries")
+    items.entries = parseJsonL(res.text, Entry)
+    items.user = fetchUserData()
+    items.meta = fetchMetaData()
+    return items
+
+action_a = action_all
+
+def action_select(items: Items):
+    """
+    Selects 1+ entries using fzf
+    """
+    fileName = "/tmp/aio2-tmp-fzf-items"
+    with open(fileName, "w") as f:
+        f.write("\n".join(f"{x.En_Title} ({x.Type}): {x.ItemId}" for x in items.entries))
+    with open(fileName, "r") as f:
+        o = subprocess.check_output(["fzf", "-m"], stdin=f)
+    text = o.decode("utf-8")
+    ids = {int(line.split(":")[1].strip()) for line in text.split("\n") if line}
+
+    i = Items()
+    i.entries = list(filter(lambda x: x.ItemId in ids, items.entries))
+    i.user = list(filter(lambda x: x.ItemId in ids, items.user))
+    i.meta = list(filter(lambda x: x.ItemId in ids, items.meta))
+    return i
+
+action_s = action_select
+
+@setArgc(count=1)
+def action_filter(items: Items, filterString: str):
+    """
+    Filters items that have been loaded using a python expression
+
+    e = current entry
+    u = current user entry
+    m = current metadata entry
+    """
+    new = Items()
+    for i in range(len(items.entries)):
+        e = items.entries[i]
+        u = items.user[i]
+        m = items.meta[i]
+        if eval(filterString, {}, {"e": e, "u": u, "m": m}):
+            new.entries.append(e)
+            new.user.append(u)
+            new.meta.append(m)
+    return new
+
+action_f = action_filter
+
+def printTableEntry(entryList: list[Any]) -> None:
+    for item in entryList:
+        print(item)
+    return print("--------------------")
+
+#generates the functions that print user, meta, info entry tables
+for l in ("user", "meta", "info"):
+    exec(f"""
+def action_{l}(items: Items) -> Items:
+    '''
+    Prints all loaded {l} entries
+    '''
+    return printTableEntry(items.{"entries" if l == "info" else l}) or items
+    """, globals(), locals())
+
+@setArgc(count=1)
+def action_search(oldItems: Items, search: str):
+    """
+    Doees a search using the aio-limas search syntax
+    """
+    res = requests.get(f"{apiPath}/query-v3?search={quote_plus(search)}")
+    try:
+        items: list[Entry] = parseJsonL(res.text, Entry)
+    except json.decoder.JSONDecodeError:
+        return oldItems
+    validItemIds = {x.ItemId for x in items}
+    user = filter(lambda x: x.ItemId in validItemIds, oldItems.user)
+    meta = filter(lambda x: x.ItemId in validItemIds, oldItems.meta)
+    return Items(entries=items, user=list(user), meta=list(meta))
+
+action_s = action_search
+
+def action_clear(_: Items):
+    """
+    Clears all loaded items
+    """
+    return Items()
+
+def action_count(items: Items):
+    """
+    Prints the number of loaded entries
+    """
+    return print(len(items.entries)) or items
+
+def confirmation_action_loop(items: Items, actionName: str):
+    beginAll = False
+    for item in items.entries:
+        if not beginAll:
+            areYouSure = input(f"Are you sure you want to {actionName}: {item.En_Title} ({item.Type}) [y/a/s/N]: ").lower()
+            if areYouSure == "a":
+                beginAll = True
+            elif areYouSure == "s":
+                break
+            elif areYouSure != "y":
+                continue
+
+        res = requests.get(f"{apiPath}/engagement/{actionName}-media?id={item.ItemId}")
+        if res.status_code != 200:
+            print(f"error: ({res.status_code}) {res.text}")
+    return items
+
+#generates the action_<action> functions, they all do the same thing
+for action in ("begin", "finish", "plan", "pause", "resume", "drop"):
+    plural = f'{action}{"e" * action.endswith("h")}s'
+    docStr = f"{plural.title()} all loaded entries"
+    exec(f"""
+def action_{action}(items: Items):
+\t'''
+\t{docStr}
+\t'''
+\treturn confirmation_action_loop(items, "{action}")""", globals(), locals())
+
+
+def action_ls(items: Items):
+    """
+    Lists all loaded entry's title,
+
+    prints the en_title, if there is no en title, prints the user's specified native_title
+    """
+    return print("\n".join(i.En_Title or i.Native_Title for i in items.entries)) or items
+
+def action_i(items: Items):
+    """
+    Interactive mode
+    """
+    while (action := input(">> ")):
+        action, *actionArgs = action.split(" ")
+        argC = get_action_argc(action)
+        fn = get_action_fn(action)
+        if len(actionArgs) < argC:
+            fnArgList = inspect.getfullargspec(fn)[0]
+            print(f"Not enough arguments for {action}, expected {", ".join(fnArgList[1:])}")
+            continue
+        while len(actionArgs) > argC:
+            actionArgs[-1] = actionArgs[-2] + " " + actionArgs.pop()
+        items = do_action(items, action, actionArgs)
+    return items
+
+@setArgc(count=1)
+def action_help(items: Items, action: str):
+    """
+    Gets help reguarding an action
+
+    Use the `actions` action to list all actions
+    """
+    fn = get_action_fn(action)
+    if not fn:
+        print(f"Invalid action {action}, use the `actions` action to list all actions")
+        return items
+    print(fn.__doc__)
+    return items
+
+def action_actions(items: Items):
+    """
+    Lists all actions
+    """
+    g = globals()
+    for name in filter(lambda name: name.startswith("action_") and "invalid" not in name, g):
+        print(name[len("action_"):], g[name].__doc__, sep="\n", end="--------------------\n")
+    return items
+
+def action_invalid_action(items: Items):
+    """
+    Invalid action
+    """
+    print(f"Invalid action: {getattr(action_invalid_action, "_aio_action")}")
+    return items
+
+def get_action_fn(name: str):
+    return globals().get(f"action_{name}", action_invalid_action)
+
+def get_action_argc(action: str):
+    fn = get_action_fn(action)
+    if hasattr(fn, "_aio_argc"):
+        return getattr(fn, "_aio_argc")
+    return 0
+
+def do_action(items: Items, action: str, args: list[Any]):
+    fn = get_action_fn(action)
+    setattr(fn, "_aio_action", action)
+    return fn(items, *args)
+
+i = 0
+while (i := i + 1) < len(args):
+    action = args[i]
+    argC = get_action_argc(action)
+    fn = get_action_fn(action)
+    if i + argC >= len(args):
+        fnArgList = inspect.getfullargspec(fn)[0]
+        print(f"Not enough arguments for {action}, expected {", ".join(fnArgList[1:])}")
+        continue
+    actionArgs = [args[j] for j in range(i + 1, i + 1 + argC)]
+    items = do_action(items, action, actionArgs)
+    i += argC
+
+for itemText in map(lambda x: repr(x), items.entries):
+    longestLine = sorted(len(x) for x in itemText.split("\n"))[-1]
+    print(itemText, end=f"\n{"-" * longestLine}\n\n")
