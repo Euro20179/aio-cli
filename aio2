@@ -94,7 +94,7 @@ items = Items()
 
 def setArgc(count: int=1):
     def accept_fn(fn: Callable[..., Any]):
-        fn._aio_argc = count
+        setattr(fn, "_aio_argc", count)
         return fn
     return accept_fn
 
@@ -130,15 +130,14 @@ def action_select(items: Items):
     with open(fileName, "w") as f:
         f.write("\n".join(f"{x.En_Title} ({x.Type}): {x.ItemId}" for x in items.entries))
     with open(fileName, "r") as f:
-        o = subprocess.check_output(["fzf", "-m"], stdin=f)
-    text = o.decode("utf-8")
+        text = subprocess.check_output(["fzf", "-m"], stdin=f).decode('utf-8')
     ids = {int(line.split(":")[1].strip()) for line in text.split("\n") if line}
 
-    i = Items()
-    i.entries = list(filter(lambda x: x.ItemId in ids, items.entries))
-    i.user = list(filter(lambda x: x.ItemId in ids, items.user))
-    i.meta = list(filter(lambda x: x.ItemId in ids, items.meta))
-    return i
+    return Items(
+        entries = list(filter(lambda x: x.ItemId in ids, items.entries)),
+        user    = list(filter(lambda x: x.ItemId in ids, items.user)),
+        meta    = list(filter(lambda x: x.ItemId in ids, items.meta))
+    )
 
 action_s = action_select
 
@@ -165,17 +164,13 @@ def action_filter(items: Items, filterString: str):
 action_f = action_filter
 
 def printTableEntry(entryList: list[Any]) -> None:
-    for item in entryList:
-        print(item)
-    return print("--------------------")
+    print("\n--------------------\n".join(map(repr, entryList)))
 
 #generates the functions that print user, meta, info entry tables
 for l in ("user", "meta", "info"):
     exec(f"""
 def action_{l}(items: Items) -> Items:
-    '''
-    Prints all loaded {l} entries
-    '''
+    '''\n\tPrints all loaded {l} entries\n\t'''
     return printTableEntry(items.{"entries" if l == "info" else l}) or items
     """, globals(), locals())
 
@@ -231,9 +226,7 @@ for action in ("begin", "finish", "plan", "pause", "resume", "drop"):
     docStr = f"{plural.title()} all loaded entries"
     exec(f"""
 def action_{action}(items: Items):
-\t'''
-\t{docStr}
-\t'''
+\t'''\n\t{docStr}\n\t'''
 \treturn confirmation_action_loop(items, "{action}")""", globals(), locals())
 
 
@@ -270,10 +263,7 @@ def action_help(items: Items, action: str):
     Use the `actions` action to list all actions
     """
     fn = get_action_fn(action)
-    if not fn:
-        print(f"Invalid action {action}, use the `actions` action to list all actions")
-        return items
-    print(fn.__doc__)
+    print(fn.__doc__ if fn else f"Invalid action {action}, use the `actions` action to list all actions")
     return items
 
 def action_actions(items: Items):
