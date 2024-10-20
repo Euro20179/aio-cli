@@ -8,7 +8,7 @@ import subprocess
 import inspect
 
 from urllib.parse import quote_plus
-from typing import Any, Callable, override
+from typing import Any, Callable, Union, override
 
 args = sys.argv
 
@@ -33,6 +33,13 @@ class User:
     Notes: str
     CurrentPosition: str
 
+    def toJson(self):
+        return json.dumps(self.__dict__, indent=4)
+
+    @override
+    def __hash__(self) -> int:
+        return hash(self.toJson())
+
     @override
     def __repr__(self) -> str:
         return str(buildTable(self.__dict__))
@@ -52,6 +59,14 @@ class Meta:
     Provider: str
     ProviderID: str
 
+    def toJson(self):
+        return json.dumps(self.__dict__, indent=4)
+
+    @override
+    def __hash__(self) -> int:
+        return hash(self.toJson())
+
+
     @override
     def __repr__(self) -> str:
         return str(buildTable(self.__dict__))
@@ -70,6 +85,21 @@ class Entry:
     Type: str
     ArtStyle: int
     CopyOf: int
+
+    def toJson(self):
+        return json.dumps(self.__dict__, indent=4)
+
+    @override
+    def __hash__(self) -> int:
+        return hash(self.toJson())
+
+
+
+    def isDigitized(self) -> bool:
+        return self.Format & 0x1000 == 0x1000
+
+    def isDigital(self) -> bool:
+        return self.Format == 7
 
     @override
     def __repr__(self) -> str:
@@ -107,8 +137,8 @@ def fetchDataList(endpoint: str, constructor: object):
     res = requests.get(endpoint)
     return parseJsonL(res.text, constructor)
 
-def fetchUserData(): return fetchDataList(f"{apiPath}/engagement/list-entries", User)
-def fetchMetaData(): return fetchDataList(f"{apiPath}/metadata/list-entries", Meta)
+def fetchUserData() -> list[User]: return fetchDataList(f"{apiPath}/engagement/list-entries", User)
+def fetchMetaData() -> list[Meta]: return fetchDataList(f"{apiPath}/metadata/list-entries", Meta)
 
 def action_all(items: Items):
     """
@@ -183,8 +213,20 @@ def action_location(items: Items):
     Sets the location of all selected items
     """
     for item in items.entries:
-        input(f"Press enter to set location for {item.En_Title}")
-        location = subprocess.check_output(["fzf", "-m", "--walker-root=/"]).decode('utf-8')
+        out = "/tmp/aio2-tmp-location"
+        cmd = ["yazi", f"--cwd-file={out}", f"--chooser-file={out}"]
+        try:
+            skip = input(f"Press enter to set location for {item.En_Title} (press <C-D> or n to skip, q to stop)")
+        except EOFError:
+            continue
+        if skip == "n":
+            continue
+        if skip == "q":
+            break
+        subprocess.check_output(cmd).decode('utf-8')
+        with open(out, "r") as f:
+            location = f.read()
+        item.Location = location
         res = requests.get(f"{apiPath}/mod-entry?id={item.ItemId}&location={quote_plus(location)}")
         print(res.text)
     return items
@@ -197,6 +239,48 @@ def action_fetch_metadata(items: Items):
     return items
 
 globals()["action_fetch-meta"] = action_fetch_metadata
+
+def mod_action(itemsList: list[Entry] | list[User] | list[Meta], endPoint: str):
+    files: dict[Entry | User | Meta, str] = {}
+    for i, item in enumerate(itemsList):
+        tmp = f"/tmp/aio2-user-mod-{i}"
+        with open(tmp, "w") as f:
+            f.write(item.toJson())
+        files[item] = tmp
+
+    subprocess.run(["nvim", "+tabdo set filetype=json", "+tabfirst", "-p", *files.values()])
+
+    for item, file in files.items():
+        with open(file, "r") as f:
+            data = json.load(f)
+            itemsList[itemsList.index(item)] = type(itemsList[0])(**data)
+
+            res = requests.post(f"{apiPath}/{endPoint}?id={data["ItemId"]}", json=data)
+            print(res.text)
+
+    return items
+
+def action_user_mod(items: Items):
+    """
+    Modifies all selected user entries
+    """
+    return mod_action(items.user, "engagement/set-entry")
+
+def action_info_mod(items: Items):
+    """
+    Modify the info entry for all selected items
+    """
+    return mod_action(items.entries, "set-entry")
+
+def action_meta_mod(items: Items):
+    """
+    Modify the meta entry for all selected items
+    """
+    return mod_action(items.meta, "metadata/set-entry")
+
+globals()["action_user-mod"] = action_user_mod
+globals()["action_info-mod"] = action_info_mod
+globals()["action_meta-mod"] = action_meta_mod
 
 def action_new(items: Items):
     """
@@ -216,7 +300,7 @@ def action_new(items: Items):
 
     name = input("Title: ")
 
-    validStatuses = ["Planned", "Finished", "Dropped", "Paused", "ReViewing", ""]
+    validStatuses = ["Planned", "Finished", "Dropped", "Paused", "ReViewing", "Viewing", ""]
     status = input("Status: ")
     while status not in validStatuses:
         status = input("Status: ")
@@ -338,7 +422,7 @@ def confirmation_action_loop(items: Items, endPoint: str, shortName: str):
     return items
 
 #generates the action_<action> functions, they all do the same thing
-for action in ("begin", "finish", "plan", "pause", "resume", "drop"):
+for action in ("begin", "plan", "pause", "resume", "drop"):
     plural = f'{action}{"e" * action.endswith("h")}s'
     docStr = f"{plural.title()} all loaded entries"
     exec(f"""
@@ -346,6 +430,23 @@ def action_{action}(items: Items):
 \t'''\n\t{docStr}\n\t'''
 \treturn confirmation_action_loop(items, "/engagement/{action}-media", "{action}")""", globals(), locals())
 
+@setArgc(count=1)
+def action_finish(items: Items, rating: int):
+    beginAll = False
+    for item in items.entries:
+        if not beginAll:
+            areYouSure = input(f"Are you sure you want to finish: {item.En_Title} ({item.Type}) [y/a/s/N]: ").lower()
+            if areYouSure == "a":
+                beginAll = True
+            elif areYouSure == "s":
+                break
+            elif areYouSure != "y":
+                continue
+
+        res = requests.get(f"{apiPath}/engagement/finish-media?id={item.ItemId}&rating={rating}")
+        if res.status_code != 200:
+            print(f"error: ({res.status_code}) {res.text}")
+    return items
 
 def action_ls(items: Items):
     """
