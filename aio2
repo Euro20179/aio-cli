@@ -151,10 +151,7 @@ def action_filter(items: Items, filterString: str):
     m = current metadata entry
     """
     new = Items()
-    for i in range(len(items.entries)):
-        e = items.entries[i]
-        u = items.user[i]
-        m = items.meta[i]
+    for e, u, m in zip(items.entries, items.user, items.meta):
         if eval(filterString, {}, {"e": e, "u": u, "m": m}):
             new.entries.append(e)
             new.user.append(u)
@@ -162,6 +159,118 @@ def action_filter(items: Items, filterString: str):
     return new
 
 action_f = action_filter
+
+def isValidFormat(formats: list[str], format: str):
+    if format.endswith("+DIGITAL"):
+        format = format.replace("+DIGITAL", "")
+    return format in formats
+
+def isValidArtStyle(styles: list[str], style: str):
+    for s in style.split("|"):
+        if s.strip() not in styles:
+            return False
+    return True
+
+def action_delete(items: Items):
+    """
+    Deletes all selected items
+    """
+    confirmation_action_loop(items, "/delete-entry", "delete")
+    return items
+
+def action_location(items: Items):
+    """
+    Sets the location of all selected items
+    """
+    for item in items.entries:
+        input(f"Press enter to set location for {item.En_Title}")
+        location = subprocess.check_output(["fzf", "-m", "--walker-root=/"]).decode('utf-8')
+        res = requests.get(f"{apiPath}/mod-entry?id={item.ItemId}&location={quote_plus(location)}")
+        print(res.text)
+    return items
+
+
+def action_new(items: Items):
+    """
+    Creates a new entry
+    """
+
+    res = requests.get(f"{apiPath}/type/type")
+    types = res.json()
+
+    res = requests.get(f"{apiPath}/type/format")
+    formats = res.json()
+    fmtNames = {v: k for k, v in formats.items()}
+
+    res = requests.get(f"{apiPath}/type/artstyle")
+    artStyles = res.json()
+    artStyleNames = {v: int(k) for k, v in artStyles.items()}
+
+    name = input("Title: ")
+
+    validStatuses = ["Planned", "Finished", "Dropped", "Paused", "ReViewing", ""]
+    status = input("Status: ")
+    while status not in validStatuses:
+        status = input("Status: ")
+
+    print(f"Valid types: {", ".join(types)}")
+    entryTy = input("Type: ")
+    while entryTy not in types:
+        entryTy = input("Type: ")
+
+    print(f"Valid formats: {", ".join(fmtNames)}")
+    fmt = input("Format: ").upper()
+    while not isValidFormat(list(fmtNames), fmt):
+        fmt = input("Format: ").upper()
+
+    digital = fmt.endswith("+DIGITAL")
+    if digital:
+        fmt = fmt.replace("+DIGITAL", "")
+
+    fmtNum = int(fmtNames[fmt])
+
+    print(f"Valid art styles: {", ".join(artStyleNames)}")
+    print("Combine art styles with |")
+    userArtStyles = input("Art styles: ")
+    while not isValidArtStyle(list(artStyleNames), userArtStyles):
+        userArtStyles = input("Art styles: ")
+
+    artStyleNum = sum(artStyleNames[style.strip()] for style in userArtStyles.split("|"))
+
+    purchasePrice = input("Purchase price: ")
+    try:
+        price = float(purchasePrice)
+    except ValueError:
+        print("[WARNING]: invalid price, using 0")
+        price = 0
+
+    tags = input("tags (, seperated)")
+
+    queries = {
+        "price": str(price),
+        "format": str(fmtNum),
+        "is-digital": str(digital).lower(),
+        "art-style": str(artStyleNum),
+        "tags": tags,
+        "type": entryTy,
+        "status": status
+    }
+
+    url = f"{apiPath}/add-entry?title={quote_plus(name)}"
+    for k, v in queries.items():
+        url += f"&{k}={quote_plus(v)}"
+    res = requests.get(url)
+
+    newEntry = Entry(**res.json())
+    newUser = list(filter(lambda item: item.ItemId == newEntry.ItemId, fetchUserData()))[0]
+    newMeta = list(filter(lambda item: item.ItemId == newEntry.ItemId, fetchMetaData()))[0]
+
+    items.entries.append(newEntry)
+    items.user.append(newUser)
+    items.meta.append(newMeta)
+
+    return items
+
 
 def printTableEntry(entryList: list[Any]) -> None:
     print("\n--------------------\n".join(map(repr, entryList)))
@@ -203,11 +312,11 @@ def action_count(items: Items):
     """
     return print(len(items.entries)) or items
 
-def confirmation_action_loop(items: Items, actionName: str):
+def confirmation_action_loop(items: Items, endPoint: str, shortName: str):
     beginAll = False
     for item in items.entries:
         if not beginAll:
-            areYouSure = input(f"Are you sure you want to {actionName}: {item.En_Title} ({item.Type}) [y/a/s/N]: ").lower()
+            areYouSure = input(f"Are you sure you want to {shortName}: {item.En_Title} ({item.Type}) [y/a/s/N]: ").lower()
             if areYouSure == "a":
                 beginAll = True
             elif areYouSure == "s":
@@ -215,7 +324,7 @@ def confirmation_action_loop(items: Items, actionName: str):
             elif areYouSure != "y":
                 continue
 
-        res = requests.get(f"{apiPath}/engagement/{actionName}-media?id={item.ItemId}")
+        res = requests.get(f"{apiPath}{endPoint}?id={item.ItemId}")
         if res.status_code != 200:
             print(f"error: ({res.status_code}) {res.text}")
     return items
@@ -227,7 +336,7 @@ for action in ("begin", "finish", "plan", "pause", "resume", "drop"):
     exec(f"""
 def action_{action}(items: Items):
 \t'''\n\t{docStr}\n\t'''
-\treturn confirmation_action_loop(items, "{action}")""", globals(), locals())
+\treturn confirmation_action_loop(items, "/engagement/{action}-media", "{action}")""", globals(), locals())
 
 
 def action_ls(items: Items):
@@ -281,6 +390,13 @@ def action_invalid_action(items: Items):
     """
     print(f"Invalid action: {getattr(action_invalid_action, "_aio_action")}")
     return items
+
+@setArgc(count=1)
+def action_af(items: Items, filter: str):
+    """
+    Gets all items then filters based on a filter
+    """
+    return action_filter(action_all(items), filter)
 
 def get_action_fn(name: str):
     return globals().get(f"action_{name}", action_invalid_action)
