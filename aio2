@@ -189,6 +189,14 @@ def action_location(items: Items):
         print(res.text)
     return items
 
+def action_fetch_metadata(items: Items):
+    """
+    Fetches metadata for all items with an automatically chosen provider
+    """
+    confirmation_action_loop(items, "/metadata/fetch", "fetch metadata for (this will overwrite all current metadata)")
+    return items
+
+globals()["action_fetch-meta"] = action_fetch_metadata
 
 def action_new(items: Items):
     """
@@ -253,7 +261,7 @@ def action_new(items: Items):
         "art-style": str(artStyleNum),
         "tags": tags,
         "type": entryTy,
-        "status": status
+        "user-status": status
     }
 
     url = f"{apiPath}/add-entry?title={quote_plus(name)}"
@@ -397,6 +405,12 @@ def action_af(items: Items, filter: str):
     Gets all items then filters based on a filter
     """
     return action_filter(action_all(items), filter)
+
+def action_as(items: Items):
+    """
+        Gets all items then runs select
+    """
+    return action_select(action_all(items))
 
 def get_action_fn(name: str):
     return globals().get(f"action_{name}", action_invalid_action)
