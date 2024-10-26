@@ -131,7 +131,7 @@ def mkRequest(method: str, url: str, **kwargs: dict[str, Any]):
     if method == "get":
         res = requests.get(url, headers={"Authorization": f"Basic {auth}"}, **kwargs)
     else:
-        res = requests.post(url, **kwargs)
+        res = requests.post(url, headers={"Authorization": f"Basic {auth}"}, **kwargs)
     if res.status_code == 401:
         aio_pin = input("Pin >> ")
         return mkRequest(method, url, **kwargs)
