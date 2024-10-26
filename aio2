@@ -6,6 +6,7 @@ import json
 import dataclasses
 import subprocess
 import inspect
+import base64
 
 from urllib.parse import quote_plus
 from typing import Any, Callable, Union, override
@@ -14,6 +15,8 @@ args = sys.argv
 
 server = os.environ.get("AIO_SERVER", "http://localhost:8080")
 apiPath = server + os.environ.get("API_PATH", "/api/v1")
+
+aio_pin = os.environ.get("AIO_ACCOUNT_NUMBER", "")
 
 def buildTable(items: dict[Any, Any], kvsep: str = " : "):
     lines: list[tuple[str, str]] = [(k, v) for k, v in items.items()]
@@ -122,6 +125,19 @@ class Items:
 
 items = Items()
 
+def mkRequest(method: str, url: str, **kwargs: dict[str, Any]):
+    global aio_pin
+    auth = base64.b64encode(f":{aio_pin}".encode("utf-8")).decode("utf-8")
+    if method == "get":
+        res = requests.get(url, headers={"Authorization": f"Basic {auth}"}, **kwargs)
+    else:
+        res = requests.post(url, **kwargs)
+    if res.status_code == 401:
+        aio_pin = input("Pin >> ")
+        return mkRequest(method, url, **kwargs)
+    return res
+
+
 def setArgc(count: int=1):
     def accept_fn(fn: Callable[..., Any]):
         setattr(fn, "_aio_argc", count)
@@ -134,7 +150,7 @@ def parseJsonL(jsonl: str, constructor: object):
     return [constructor(**json.loads(jsonLine)) for jsonLine in jsonl.split("\n") if jsonLine]
 
 def fetchDataList(endpoint: str, constructor: object):
-    res = requests.get(endpoint)
+    res = mkRequest("get", endpoint)
     return parseJsonL(res.text, constructor)
 
 def fetchUserData() -> list[User]: return fetchDataList(f"{apiPath}/engagement/list-entries", User)
@@ -144,7 +160,7 @@ def action_all(items: Items):
     """
     Loads all entries
     """
-    res = requests.get(f"{apiPath}/list-entries")
+    res = mkRequest("get", f"{apiPath}/list-entries")
     items.entries = parseJsonL(res.text, Entry)
     items.user = fetchUserData()
     items.meta = fetchMetaData()
@@ -161,7 +177,7 @@ def action_select(items: Items):
         f.write("\n".join(f"{x.En_Title} ({x.Type}): {x.ItemId}" for x in items.entries))
     with open(fileName, "r") as f:
         text = subprocess.check_output(["fzf", "-m"], stdin=f).decode('utf-8')
-    ids = {int(line.split(":")[1].strip()) for line in text.split("\n") if line}
+    ids = {int(line.split(":")[-1].strip()) for line in text.split("\n") if line}
 
     return Items(
         entries = list(filter(lambda x: x.ItemId in ids, items.entries)),
@@ -227,7 +243,7 @@ def action_location(items: Items):
         with open(out, "r") as f:
             location = f.read()
         item.Location = location
-        res = requests.get(f"{apiPath}/mod-entry?id={item.ItemId}&location={quote_plus(location)}")
+        res = mkRequest("get", f"{apiPath}/mod-entry?id={item.ItemId}&location={quote_plus(location)}")
         print(res.text)
     return items
 
@@ -255,7 +271,7 @@ def mod_action(itemsList: list[Entry] | list[User] | list[Meta], endPoint: str):
             data = json.load(f)
             itemsList[itemsList.index(item)] = type(itemsList[0])(**data)
 
-            res = requests.post(f"{apiPath}/{endPoint}?id={data["ItemId"]}", json=data)
+            res = mkRequest("post", f"{apiPath}/{endPoint}?id={data["ItemId"]}", json=data)
             print(res.text)
 
     return items
@@ -287,14 +303,14 @@ def action_new(items: Items):
     Creates a new entry
     """
 
-    res = requests.get(f"{apiPath}/type/type")
+    res = mkRequest("get", f"{apiPath}/type/type")
     types = res.json()
 
-    res = requests.get(f"{apiPath}/type/format")
+    res = mkRequest("get", f"{apiPath}/type/format")
     formats = res.json()
     fmtNames = {v: k for k, v in formats.items()}
 
-    res = requests.get(f"{apiPath}/type/artstyle")
+    res = mkRequest("get", f"{apiPath}/type/artstyle")
     artStyles = res.json()
     artStyleNames = {v: int(k) for k, v in artStyles.items()}
 
@@ -351,7 +367,7 @@ def action_new(items: Items):
     url = f"{apiPath}/add-entry?title={quote_plus(name)}"
     for k, v in queries.items():
         url += f"&{k}={quote_plus(v)}"
-    res = requests.get(url)
+    res = mkRequest("get", url)
 
     newEntry = Entry(**res.json())
     newUser = list(filter(lambda item: item.ItemId == newEntry.ItemId, fetchUserData()))[0]
@@ -380,7 +396,7 @@ def action_search(oldItems: Items, search: str):
     """
     Doees a search using the aio-limas search syntax
     """
-    res = requests.get(f"{apiPath}/query-v3?search={quote_plus(search)}")
+    res = mkRequest("get", f"{apiPath}/query-v3?search={quote_plus(search)}")
     try:
         items: list[Entry] = parseJsonL(res.text, Entry)
     except json.decoder.JSONDecodeError:
@@ -416,7 +432,7 @@ def confirmation_action_loop(items: Items, endPoint: str, shortName: str):
             elif areYouSure != "y":
                 continue
 
-        res = requests.get(f"{apiPath}{endPoint}?id={item.ItemId}")
+        res = mkRequest("get", f"{apiPath}{endPoint}?id={item.ItemId}")
         if res.status_code != 200:
             print(f"error: ({res.status_code}) {res.text}")
     return items
@@ -443,7 +459,7 @@ def action_finish(items: Items, rating: int):
             elif areYouSure != "y":
                 continue
 
-        res = requests.get(f"{apiPath}/engagement/finish-media?id={item.ItemId}&rating={rating}")
+        res = mkRequest("get", f"{apiPath}/engagement/finish-media?id={item.ItemId}&rating={rating}")
         if res.status_code != 200:
             print(f"error: ({res.status_code}) {res.text}")
     return items
