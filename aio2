@@ -396,14 +396,26 @@ def action_search(oldItems: Items, search: str):
     """
     Doees a search using the aio-limas search syntax
     """
+
     res = mkRequest("get", f"{apiPath}/query-v3?search={quote_plus(search)}")
+
     try:
         items: list[Entry] = parseJsonL(res.text, Entry)
     except json.decoder.JSONDecodeError:
         return oldItems
+
     validItemIds = {x.ItemId for x in items}
+
+    #if this data wasn't fetched before, fetch it now
+    if not oldItems.user:
+        oldItems.user = fetchUserData()
+    if not oldItems.meta:
+        oldItems.meta = fetchMetaData()
+
+
     user = filter(lambda x: x.ItemId in validItemIds, oldItems.user)
     meta = filter(lambda x: x.ItemId in validItemIds, oldItems.meta)
+
     return Items(entries=items, user=list(user), meta=list(meta)).orderizeLists()
 
 action_s = action_search
