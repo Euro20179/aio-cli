@@ -392,10 +392,13 @@ def action_new(items: Items):
     print(f"Valid art styles: {", ".join(artStyleNames)}")
     print("Combine art styles with |")
     userArtStyles = input("Art styles: ")
-    while not isValidArtStyle(list(artStyleNames), userArtStyles):
+    while userArtStyles and not isValidArtStyle(list(artStyleNames), userArtStyles):
         userArtStyles = input("Art styles: ")
 
-    artStyleNum = sum(artStyleNames[style.strip()] for style in userArtStyles.split("|"))
+    if userArtStyles:
+        artStyleNum = sum(artStyleNames[style.strip()] for style in userArtStyles.split("|"))
+    else:
+        artStyleNum = 0
 
     purchasePrice = input("Purchase price: ")
     try:
