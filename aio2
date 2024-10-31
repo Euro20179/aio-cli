@@ -217,6 +217,58 @@ def isValidArtStyle(styles: list[str], style: str):
             return False
     return True
 
+@dataclasses.dataclass
+class Event:
+    ItemId: int
+    Timestamp: int
+    Event: str
+    After: int
+
+    @override
+    def __repr__(self):
+        if self.After:
+            return f'{self.ItemId} {self.Event} > {self.After}'
+        return f'{self.ItemId} {self.Event}: {self.Timestamp}'
+
+
+def action_events(items: Items):
+    """
+    Lists all events for selected items
+    """
+    res = mkRequest("get", f"{apiPath}/engagement/list-events")
+    if not res: return items
+    events: list[Event] = parseJsonL(res.text, Event)
+    for item in items.entries:
+        itemEvents = map(lambda x: repr(x), filter(lambda x: x.ItemId == item.ItemId, events))
+        for event in itemEvents:
+            print(f"{item.En_Title}: {repr(event)}")
+
+
+def action_delete_event(items: Items):
+    """
+    Select the events to delete for each selected item
+    """
+
+    res = mkRequest("get", f"{apiPath}/engagement/list-events")
+    if not res: return items
+    events: list[Event] = parseJsonL(res.text, Event)
+    for item in items.entries:
+        itemEvents = [event for event in events if event.ItemId == item.ItemId]
+        for i, event in enumerate(itemEvents):
+            print(f"{i}: {item.En_Title}: {repr(event)}")
+        nums = input("Type the numbers of the events you want to delete\n(space seperated) (-1 to end deleting): ")
+        for num in nums.split(" "):
+            if num == "-1":
+                return items
+            if not num.isnumeric(): continue
+            event = itemEvents[int(num)]
+            res = mkRequest("get", f"{apiPath}/engagement/delete-event?id={event.ItemId}&timestamp={event.Timestamp}&after={event.After}")
+            print(res.text)
+
+globals()["delete-event"] = action_delete_event
+globals()["delete-events"] = action_delete_event
+
+
 def action_delete(items: Items):
     """
     Deletes all selected items
@@ -317,9 +369,9 @@ def action_new(items: Items):
     name = input("Title: ")
 
     validStatuses = ["Planned", "Finished", "Dropped", "Paused", "ReViewing", "Viewing", ""]
-    status = input("Status: ")
+    status = input("Status: ").title()
     while status not in validStatuses:
-        status = input("Status: ")
+        status = input("Status: ").title()
 
     print(f"Valid types: {", ".join(types)}")
     entryTy = input("Type: ")
