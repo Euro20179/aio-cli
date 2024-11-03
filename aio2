@@ -9,7 +9,7 @@ import inspect
 import base64
 
 from urllib.parse import quote_plus
-from typing import Any, Callable, Union, override
+from typing import Any, Callable, override
 
 args = sys.argv
 
@@ -604,6 +604,8 @@ def action_print(items: Items):
         longestLine = sorted(len(x) for x in itemText.split("\n"))[-1]
         print(itemText, end=f"\n{"-" * longestLine}\n\n")
     return items
+
+action_p = action_print
 
 def get_action_fn(name: str):
     return globals().get(f"action_{name}", action_invalid_action)
