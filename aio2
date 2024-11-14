@@ -356,7 +356,8 @@ def action_new(items: Items):
     """
 
     res = mkRequest("get", f"{apiPath}/type/type")
-    types = res.json()
+    types: list[str] = res.json()
+
 
     res = mkRequest("get", f"{apiPath}/type/format")
     formats = res.json()
@@ -409,6 +410,13 @@ def action_new(items: Items):
 
     tags = input("tags (, seperated)")
 
+    parentId = 0
+    if len(items.entries) == 1:
+        mkChild = input(f"Would you like to make this item a child of {items.entries[0].En_Title} (ty: {items.entries[0].Type}) [y/N]").lower()
+        if mkChild == "y":
+            parentId = items.entries[0].ItemId
+
+
     queries = {
         "price": str(price),
         "format": str(fmtNum),
@@ -416,7 +424,8 @@ def action_new(items: Items):
         "art-style": str(artStyleNum),
         "tags": tags,
         "type": entryTy,
-        "user-status": status
+        "user-status": status,
+        "parerntId": str(parentId)
     }
 
     url = f"{apiPath}/add-entry?title={quote_plus(name)}"
