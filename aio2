@@ -316,7 +316,7 @@ def mod_action(itemsList: list[Entry] | list[User] | list[Meta], endPoint: str):
             f.write(item.toJson())
         files[item] = tmp
 
-    subprocess.run(["nvim", "+tabdo set filetype=json", "+tabfirst", "-p", *files.values()])
+    subprocess.run(["nvim", "+bufdo set filetype=json", *files.values()])
 
     for item, file in files.items():
         with open(file, "r") as f:
@@ -433,6 +433,12 @@ def action_new(items: Items):
     items.meta.append(newMeta)
 
     return items
+
+def action_newf(items: Items):
+    """
+    Create a new item then fetch metadata for it
+    """
+    return action_fetch_metadata(action_new(items))
 
 
 def printTableEntry(entryList: list[Any]) -> None:
