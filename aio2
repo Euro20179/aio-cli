@@ -622,6 +622,23 @@ def action_print(items: Items):
 
 action_p = action_print
 
+def action_printall(items: Items):
+    """
+    Prints user, meta, and info for all items
+    """
+
+    for info, user, meta in zip(items.entries, items.user, items.meta):
+        print("--- INFO")
+        print(info)
+        print("--- USER")
+        print(user)
+        print("--- META")
+        print(meta)
+        print("-------------------------------")
+    return items
+
+action_pa = action_printall
+
 def get_action_fn(name: str):
     return globals().get(f"action_{name}", action_invalid_action)
 
