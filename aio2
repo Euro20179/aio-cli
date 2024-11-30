@@ -61,7 +61,7 @@ class Event:
     def __repr__(self):
         if self.After:
             prettyTime = datetime.fromtimestamp(self.After / 1000)
-            return f'{self.ItemId} {self.Event} > {self.After}'
+            return f'{self.ItemId} {self.Event}: > {prettyTime}'
         prettyTime = datetime.fromtimestamp(self.Timestamp / 1000)
         return f'{self.ItemId} {self.Event}: {prettyTime}'
 
