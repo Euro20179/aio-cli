@@ -18,7 +18,7 @@ apiPath = server + os.environ.get("API_PATH", "/api/v1")
 
 aio_pin = os.environ.get("AIO_ACCOUNT_NUMBER", "")
 
-def buildTable(items: dict[Any, Any], kvsep: str = " : "):
+def buildTable(items: dict[str, Any], kvsep: str = " : "):
     lines: list[tuple[str, str]] = [(k, v) for k, v in items.items()]
 
     longestKey = max(*lines, key=lambda x: len(x[0]))
@@ -321,6 +321,7 @@ def mod_action(itemsList: list[Entry] | list[User] | list[Meta], endPoint: str):
     for item, file in files.items():
         with open(file, "r") as f:
             data = json.load(f)
+
             itemsList[itemsList.index(item)] = type(itemsList[0])(**data)
 
             res = mkRequest("post", f"{apiPath}/{endPoint}?id={data["ItemId"]}", json=data)
@@ -607,7 +608,7 @@ def action_af(items: Items, filter: str):
 
 def action_as(items: Items):
     """
-        Gets all items then runs select
+    Gets all items then runs select
     """
     return action_select(action_all(items))
 
