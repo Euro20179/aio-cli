@@ -1,4 +1,5 @@
 #!/bin/python
+from datetime import datetime
 import sys
 import requests
 import os
@@ -26,6 +27,21 @@ def buildTable(items: dict[str, Any], kvsep: str = " : "):
 
     text = "\n".join(f"{k: <{lkLen}}{kvsep}{v}" for k, v in lines)
     return text
+
+@dataclasses.dataclass
+class Event:
+    ItemId: int
+    Timestamp: int
+    Event: str
+    After: int
+
+    @override
+    def __repr__(self):
+        if self.After:
+            prettyTime = datetime.fromtimestamp(self.After / 1000)
+            return f'{self.ItemId} {self.Event} > {self.After}'
+        prettyTime = datetime.fromtimestamp(self.Timestamp / 1000)
+        return f'{self.ItemId} {self.Event}: {prettyTime}'
 
 @dataclasses.dataclass
 class User:
@@ -113,6 +129,7 @@ class Items:
     entries: list[Entry] = dataclasses.field(default_factory=list)
     user: list[User] = dataclasses.field(default_factory=list)
     meta: list[Meta] = dataclasses.field(default_factory=list)
+    events: list[Event] = dataclasses.field(default_factory=list)
 
     def orderizeLists(self):
         """
@@ -121,6 +138,7 @@ class Items:
         self.entries = sorted(self.entries, key=lambda item: item.ItemId)
         self.meta = sorted(self.meta, key=lambda item: item.ItemId)
         self.user = sorted(self.user, key=lambda item: item.ItemId)
+        self.events = sorted(self.events, key=lambda item: item.ItemId)
         return self
 
 items = Items()
@@ -155,6 +173,7 @@ def fetchDataList(endpoint: str, constructor: object):
 
 def fetchUserData() -> list[User]: return fetchDataList(f"{apiPath}/engagement/list-entries", User)
 def fetchMetaData() -> list[Meta]: return fetchDataList(f"{apiPath}/metadata/list-entries", Meta)
+def fetchEventsData() -> list[Event]: return fetchDataList(f"{apiPath}/engagement/list-events", Event)
 
 def action_all(items: Items):
     """
@@ -164,6 +183,7 @@ def action_all(items: Items):
     items.entries = parseJsonL(res.text, Entry)
     items.user = fetchUserData()
     items.meta = fetchMetaData()
+    items.events = fetchEventsData()
     return items.orderizeLists()
 
 action_a = action_all
@@ -182,7 +202,8 @@ def action_select(items: Items):
     return Items(
         entries = list(filter(lambda x: x.ItemId in ids, items.entries)),
         user    = list(filter(lambda x: x.ItemId in ids, items.user)),
-        meta    = list(filter(lambda x: x.ItemId in ids, items.meta))
+        meta    = list(filter(lambda x: x.ItemId in ids, items.meta)),
+        events  = list(filter(lambda x: x.ItemId in ids, items.events)),
     )
 
 action_s = action_select
@@ -216,19 +237,6 @@ def isValidArtStyle(styles: list[str], style: str):
         if s.strip() not in styles:
             return False
     return True
-
-@dataclasses.dataclass
-class Event:
-    ItemId: int
-    Timestamp: int
-    Event: str
-    After: int
-
-    @override
-    def __repr__(self):
-        if self.After:
-            return f'{self.ItemId} {self.Event} > {self.After}'
-        return f'{self.ItemId} {self.Event}: {self.Timestamp}'
 
 
 def action_events(items: Items):
@@ -455,7 +463,7 @@ def printTableEntry(entryList: list[Any]) -> None:
     print("\n--------------------\n".join(map(repr, entryList)))
 
 #generates the functions that print user, meta, info entry tables
-for l in ("user", "meta", "info"):
+for l in ("user", "meta", "info", "events"):
     exec(f"""
 def action_{l}(items: Items) -> Items:
     '''\n\tPrints all loaded {l} entries\n\t'''
@@ -482,12 +490,15 @@ def action_search(oldItems: Items, search: str):
         oldItems.user = fetchUserData()
     if not oldItems.meta:
         oldItems.meta = fetchMetaData()
+    if not oldItems.events:
+        oldItems.events = fetchEventsData()
 
 
     user = filter(lambda x: x.ItemId in validItemIds, oldItems.user)
     meta = filter(lambda x: x.ItemId in validItemIds, oldItems.meta)
+    events = filter(lambda x: x.ItemId in validItemIds, oldItems.events)
 
-    return Items(entries=items, user=list(user), meta=list(meta)).orderizeLists()
+    return Items(entries=items, user=list(user), meta=list(meta), events=list(events)).orderizeLists()
 
 action_s = action_search
 
