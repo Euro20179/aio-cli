@@ -19,6 +19,28 @@ apiPath = server + os.environ.get("API_PATH", "/api/v1")
 
 aio_pin = os.environ.get("AIO_ACCOUNT_NUMBER", "")
 
+def replaceAllBraces(text: str, replacements: dict[str, str]) -> str:
+    inBrace = 0
+    newText = ""
+    curBraceText = ""
+    for char in text:
+        if char == "{":
+            inBrace += 1
+            continue
+        elif char == "}":
+            inBrace -= 1
+
+        if inBrace == 0:
+            if curBraceText:
+                newText += replacements.get(curBraceText, "")
+                curBraceText = ""
+            else:
+                newText += char
+        else:
+            curBraceText += char
+
+    return newText
+
 def buildTable(items: dict[str, Any], kvsep: str = " : "):
     lines: list[tuple[str, str]] = [(k, v) for k, v in items.items()]
 
@@ -633,6 +655,35 @@ def action_print(items: Items):
     return items
 
 action_p = action_print
+
+@setArgc(count=1)
+def action_printf(items: Items, spec: str):
+    """
+    Similar to `print` however a format spec is requried
+
+    use {} and put the name of a field that you want in it
+
+    "events" is a special field that contains all events
+
+    to print events more finely use the `eventsf` action
+
+    //TODO: eventsf (events format action)
+    """
+
+    for info, user, meta in zip(items.entries, items.user, items.meta):
+        events = tuple(event for event in items.events if event.ItemId == info.ItemId)
+        replacements = {"events": "\n".join(str(e) for e in events)}
+        replacements |= {
+                        k: str(v) for k, v in vars(info).items()
+                    }
+        replacements |= {k: str(v) for k, v in vars(user).items()}
+        replacements |= {k: str(v) for k, v in vars(meta).items()}
+
+        print(replaceAllBraces(spec, replacements))
+
+    return items
+
+action_pf = action_printf
 
 def action_printall(items: Items):
     """
