@@ -1,4 +1,5 @@
 #!/bin/python
+from datetime import timedelta
 from datetime import datetime
 import sys
 import requests
@@ -10,7 +11,7 @@ import inspect
 import base64
 
 from urllib.parse import quote_plus
-from typing import Any, Callable, override
+from typing import Any, Callable, Self, override
 
 args = sys.argv
 
@@ -35,7 +36,7 @@ def replaceAllBraces(text: str, replacements: dict[str, str], pyEval: bool = Fal
                 replData = replacements.get(curBraceText)
 
                 if replData is None and pyEval:
-                    replData = str(eval(curBraceText, {}, evalContext))
+                    replData = str(eval(curBraceText, globals(), evalContext))
                 else:
                     replData = ""
 
@@ -58,12 +59,32 @@ def buildTable(items: dict[str, Any], kvsep: str = " : "):
     text = "\n".join(f"{k: <{lkLen}}{kvsep}{v}" for k, v in lines)
     return text
 
+def ts2td(totalSeconds: float):
+    td = timedelta(seconds=totalSeconds)
+    return td
+    # seconds = totalSeconds % 60
+    # minutes = (totalSeconds % 3600) // 60
+    # hours = (totalSeconds % 86400) // 3600
+    # days = (totalSeconds % (86400 * 30)) // 86400
+    #
+    # return f'{days}:{hours}:{minutes}:{seconds}'
+
+
+
+
 @dataclasses.dataclass
 class Event:
     ItemId: int
     Timestamp: int
     Event: str
     After: int
+
+    @override
+    def __eq__(self, other: object):
+        return isinstance(other, Event) and self.Event == other.Event
+
+    def __sub__(self, other: Self):
+        return self.Timestamp - other.Timestamp
 
     @override
     def __repr__(self):
@@ -110,6 +131,12 @@ class Meta:
 
     def toJson(self):
         return json.dumps(self.__dict__, indent=4)
+
+    def md(self):
+        if self.MediaDependant:
+            return json.loads(self.MediaDependant)
+        else:
+            return {}
 
     @override
     def __hash__(self) -> int:
