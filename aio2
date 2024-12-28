@@ -90,9 +90,9 @@ class Event:
     def __repr__(self):
         if self.After:
             prettyTime = datetime.fromtimestamp(self.After / 1000)
-            return f'{self.ItemId} {self.Event}: > {prettyTime}'
+            return f'{self.ItemId} {self.Event}: > {prettyTime} ({self.After})'
         prettyTime = datetime.fromtimestamp(self.Timestamp / 1000)
-        return f'{self.ItemId} {self.Event}: {prettyTime}'
+        return f'{self.ItemId} {self.Event}: {prettyTime} ({self.Timestamp})'
 
 @dataclasses.dataclass
 class User:
