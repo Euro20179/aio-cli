@@ -19,6 +19,7 @@ server = os.environ.get("AIO_SERVER", "http://localhost:8080")
 apiPath = server + os.environ.get("API_PATH", "/api/v1")
 
 aio_pin = os.environ.get("AIO_ACCOUNT_NUMBER", "")
+aio_uid = os.environ.get("AIO_UID", "1")
 
 def replaceAllBraces(text: str, replacements: dict[str, str], pyEval: bool = False, evalContext: dict[str, Any] | None = None) -> str:
     inBrace = 0
@@ -78,6 +79,7 @@ class Event:
     Timestamp: int
     Event: str
     After: int
+    TimeZone: str
 
     @override
     def __eq__(self, other: object):
@@ -202,7 +204,11 @@ items = Items()
 
 def mkRequest(method: str, url: str, **kwargs: dict[str, Any]):
     global aio_pin
-    auth = base64.b64encode(f":{aio_pin}".encode("utf-8")).decode("utf-8")
+    auth = base64.b64encode(f"{aio_pin}".encode("utf-8")).decode("utf-8")
+    if "?" in url:
+        url += f"&uid={aio_uid}"
+    else:
+        url += f"?uid={aio_uid}"
     if method == "get":
         res = requests.get(url, headers={"Authorization": f"Basic {auth}"}, **kwargs)
     else:
