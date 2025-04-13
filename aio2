@@ -104,6 +104,7 @@ class User:
     UserRating: float
     Notes: str
     CurrentPosition: str
+    Extra: str
 
     def toJson(self):
         return json.dumps(self.__dict__, indent=4)
@@ -163,6 +164,9 @@ class Entry:
     Type: str
     ArtStyle: int
     CopyOf: int
+    Library: int
+
+    Tags: list[str]
 
     def toJson(self):
         return json.dumps(self.__dict__, indent=4)
