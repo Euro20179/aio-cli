@@ -75,6 +75,7 @@ def ts2td(totalSeconds: float):
 
 @dataclasses.dataclass
 class Event:
+    Uid: int
     ItemId: int
     Timestamp: int
     Event: str
@@ -98,6 +99,7 @@ class Event:
 
 @dataclasses.dataclass
 class User:
+    Uid: int
     ItemId: int
     Status: str
     ViewCount: int
@@ -105,6 +107,7 @@ class User:
     Notes: str
     CurrentPosition: str
     Extra: str
+    Minutes: int
 
     def toJson(self):
         return json.dumps(self.__dict__, indent=4)
@@ -119,6 +122,7 @@ class User:
 
 @dataclasses.dataclass
 class Meta:
+    Uid: int
     ItemId: int
     Rating: float
     RatingMax: float
@@ -153,6 +157,7 @@ class Meta:
 
 @dataclasses.dataclass
 class Entry:
+    Uid: int
     ItemId: int
     Collection: str
     En_Title: str
