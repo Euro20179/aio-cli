@@ -615,6 +615,13 @@ def action_ss(items: Items, search: str):
     items = action_search4(items, search)
     return action_select(items)
 
+@setArgc(count=1)
+def action_ss3(items: Items, search: str):
+    """
+    Does a search v3 and action_select
+    """
+    return action_select(action_search(items, search))
+
 def action_clear(_: Items):
     """
     Clears all loaded items
