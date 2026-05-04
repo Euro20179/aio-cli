@@ -1,4 +1,5 @@
 #!/bin/python
+import tempfile
 from datetime import timedelta
 from datetime import datetime
 import sys
@@ -418,6 +419,25 @@ def action_user_mod(items: Items):
     Modifies all selected user entries
     """
     return mod_action(items.user, "engagement/set-entry")
+
+def action_note(items: Items):
+    """
+    For each item, create a file for it's Note, and open each file in $EDITOR
+    """
+    with tempfile.TemporaryDirectory() as dir:
+        names = []
+        for item in items.user:
+            names.append(f"{dir}/{item.ItemId}.txt")
+            with open(f"{dir}/{item.ItemId}.txt", "w") as f:
+                f.write(item.Notes)
+        editor = (os.getenv("EDITOR") or "vim").split(" ")
+        subprocess.check_call([*editor, *names])
+        for item in items.user:
+            with open(f"{dir}/{item.ItemId}.txt", "r") as f:
+                item.Notes = f.read()
+                res = mkRequest("post", f"{apiPath}/engagement/set-entry?id={item.ItemId}", json=json.loads(item.toJson()))
+                print(res.text, file=sys.stderr)
+    return items
 
 def action_info_mod(items: Items):
     """
