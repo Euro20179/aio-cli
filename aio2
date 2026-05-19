@@ -775,6 +775,19 @@ def action_print(items: Items):
 action_p = action_print
 
 @setArgc(count=1)
+def action_nth(items: Items, nth: str):
+    """
+    Selects the nth item from the list of items
+    """
+    n = int(nth) - 1
+    items.entries = [items.entries[n]]
+    items.events
+    items.events = [filter(lambda x: x.ItemId == items.entries[0].ItemId, items.events)]
+    items.meta = [items.meta[n]]
+    items.user = [items.user[n]]
+    return items
+
+@setArgc(count=1)
 def action_printf(items: Items, spec: str):
     """
     Similar to `print` however a format spec is requried
