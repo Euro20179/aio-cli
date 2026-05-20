@@ -596,6 +596,8 @@ def action_search(oldItems: Items, search: str):
 
     return Items(entries=items, user=list(user), meta=list(meta), events=list(events)).orderizeLists()
 
+action_s3 = action_search
+
 @setArgc(count=1)
 def action_search4(oldItems: Items, search: str):
     """
