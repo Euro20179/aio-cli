@@ -53,7 +53,7 @@ def replaceAllBraces(text: str, replacements: dict[str, str], pyEval: bool = Fal
     return newText
 
 def buildTable(items: dict[str, Any], kvsep: str = " : "):
-    lines: list[tuple[str, str]] = [(k, v) for k, v in items.items()]
+    lines: list[tuple[str, str]] = [(k, v if not isinstance(v, list | dict) else json.dumps(v)) for k, v in items.items()]
 
     longestKey = max(*lines, key=lambda x: len(x[0]))
     lkLen = len(longestKey[0])
