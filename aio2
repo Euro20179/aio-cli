@@ -840,6 +840,15 @@ def action_printall(items: Items):
 
 action_pa = action_printall
 
+def action_open(items: Items):
+    """
+    Opens all items using xdg-open
+    """
+
+    for item in items.entries:
+        if not item.Location: continue
+        subprocess.check_call(["xdg-open", item.Location])
+
 def get_action_fn(name: str):
     return globals().get(f"action_{name}", action_invalid_action)
 
