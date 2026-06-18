@@ -12,7 +12,7 @@ import inspect
 import base64
 
 from urllib.parse import quote_plus
-from typing import Any, Callable, Self, override
+from typing import Any, Callable, Self, override  # ty:ignore[unresolved-import]
 
 args = sys.argv
 
@@ -70,9 +70,6 @@ def ts2td(totalSeconds: float):
     # days = (totalSeconds % (86400 * 30)) // 86400
     #
     # return f'{days}:{hours}:{minutes}:{seconds}'
-
-
-
 
 @dataclasses.dataclass
 class Event:
@@ -847,7 +844,8 @@ def action_open(items: Items):
 
     for item in items.entries:
         if not item.Location: continue
-        subprocess.check_call(["xdg-open", item.Location])
+        # use sh -c to expand env vars
+        subprocess.check_call(["sh", "-c", f'xdg-open "{item.Location.replace('"', '\\"')}"'])
 
 def get_action_fn(name: str):
     return globals().get(f"action_{name}", action_invalid_action)
